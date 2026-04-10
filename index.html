@@ -181,11 +181,11 @@
 
 <div id="content"></div>
 
-<script src="https://api.bitrix24.com/api/v1/"></script>
 <script>
+var WEBHOOK = 'https://b24-zdzx6w.bitrix24.ru/rest/1/9wbak5042uzstqn3';
 var PIPELINE_ID = 1;
 var EXECUTOR_SUM_FIELD = 'UF_CRM_1775840246072';
-var PORTAL_URL = '';
+var PORTAL_URL = 'https://b24-zdzx6w.bitrix24.ru';
 
 var STAGE_NAMES = {
     'C1:NEW': 'Новая',
@@ -199,69 +199,62 @@ var STAGE_NAMES = {
 
 var reportData = null;
 
-// Init BX24 and set current month
-BX24.init(function() {
-    var domain = BX24.getDomain();
-    PORTAL_URL = 'https://' + domain;
+// Init
+var now = new Date();
+var currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+document.getElementById('monthFrom').value = currentMonth;
+document.getElementById('monthTo').value = currentMonth;
+document.getElementById('btnGenerate').addEventListener('click', generateReport);
+document.getElementById('btnExport').addEventListener('click', exportCSV);
 
-    var now = new Date();
-    var currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    document.getElementById('monthFrom').value = currentMonth;
-    document.getElementById('monthTo').value = currentMonth;
-    document.getElementById('btnGenerate').addEventListener('click', generateReport);
-    document.getElementById('btnExport').addEventListener('click', exportCSV);
-
-    BX24.fitWindow();
-});
-
-function apiCall(method, params) {
-    return new Promise(function(resolve, reject) {
-        BX24.callMethod(method, params || {}, function(result) {
-            if (result.error()) {
-                reject(new Error(result.error().ex.error_description || result.error().status));
+async function apiCall(method, params) {
+    var body = new URLSearchParams();
+    function flatten(obj, prefix) {
+        for (var key in obj) {
+            if (!obj.hasOwnProperty(key)) continue;
+            var val = obj[key];
+            var fullKey = prefix ? prefix + '[' + key + ']' : key;
+            if (Array.isArray(val)) {
+                val.forEach(function(v, i) { body.append(fullKey + '[' + i + ']', v); });
+            } else if (typeof val === 'object' && val !== null) {
+                flatten(val, fullKey);
             } else {
-                resolve(result);
+                body.append(fullKey, val);
             }
-        });
-    });
+        }
+    }
+    if (params) flatten(params, '');
+    var resp = await fetch(WEBHOOK + '/' + method + '.json', { method: 'POST', body: body });
+    return resp.json();
 }
 
-function getAllDeals(dateFrom, dateTo) {
-    return new Promise(function(resolve, reject) {
-        var deals = [];
-        BX24.callMethod('crm.deal.list', {
+async function getAllDeals(dateFrom, dateTo) {
+    var deals = [];
+    var start = 0;
+    while (true) {
+        var result = await apiCall('crm.deal.list', {
             filter: { 'CATEGORY_ID': PIPELINE_ID, '>=CLOSEDATE': dateFrom, '<CLOSEDATE': dateTo },
             select: ['ID', 'TITLE', 'ASSIGNED_BY_ID', 'STAGE_ID', 'OPPORTUNITY', 'CLOSEDATE', 'DATE_CREATE', EXECUTOR_SUM_FIELD],
-        }, function(result) {
-            if (result.error()) {
-                reject(new Error(result.error().ex.error_description || 'API error'));
-                return;
-            }
-            deals = deals.concat(result.data());
-            if (result.more()) {
-                result.next();
-            } else {
-                resolve(deals);
-            }
+            start: start,
         });
-    });
+        var batch = result.result || [];
+        deals = deals.concat(batch);
+        if (!result.next) break;
+        start = result.next;
+    }
+    return deals;
 }
 
-function getUsers(ids) {
-    return new Promise(function(resolve, reject) {
-        if (!ids.length) { resolve({}); return; }
-        BX24.callMethod('user.get', { ID: ids }, function(result) {
-            if (result.error()) {
-                reject(new Error(result.error().ex.error_description || 'API error'));
-                return;
-            }
-            var users = {};
-            (result.data() || []).forEach(function(u) {
-                users[u.ID] = ((u.NAME || '') + ' ' + (u.LAST_NAME || '')).trim() || ('User #' + u.ID);
-            });
-            resolve(users);
-        });
+async function getUsers(ids) {
+    if (!ids.length) return {};
+    var params = {};
+    ids.forEach(function(id, i) { params['ID[' + i + ']'] = id; });
+    var result = await apiCall('user.get', params);
+    var users = {};
+    (result.result || []).forEach(function(u) {
+        users[u.ID] = ((u.NAME || '') + ' ' + (u.LAST_NAME || '')).trim() || ('User #' + u.ID);
     });
+    return users;
 }
 
 function parseMoney(val) {
