@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отчёт: Сумма исполнителя</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            padding: 24px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e88e5, #0d47a1);
+            color: #fff;
+            padding: 24px 32px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .header h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+        .header p { font-size: 13px; opacity: 0.8; }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .controls label { font-size: 14px; font-weight: 500; color: #555; }
+
+        .controls input[type="month"] {
+            padding: 8px 14px;
+            border: 1px solid #d0d5dd;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fff;
+        }
+
+        .controls button {
+            padding: 8px 20px;
+            background: #1e88e5;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .controls button:hover { background: #1565c0; }
+        .controls button:disabled { background: #90caf9; cursor: wait; }
+        .controls .export-btn { background: #43a047; margin-left: auto; }
+        .controls .export-btn:hover { background: #2e7d32; }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .card .label {
+            font-size: 12px; color: #888;
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+        }
+
+        .card .value { font-size: 26px; font-weight: 700; color: #1e88e5; }
+        .card .value.green { color: #43a047; }
+
+        .user-section {
+            background: #fff;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .user-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: #fafbfc;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .user-header:hover { background: #f0f4f8; }
+        .user-name { font-size: 16px; font-weight: 600; }
+
+        .user-stats { display: flex; gap: 20px; font-size: 14px; color: #666; }
+        .user-stats .sum { font-weight: 700; color: #43a047; }
+
+        .deals-table { width: 100%; border-collapse: collapse; }
+
+        .deals-table th {
+            text-align: left; padding: 10px 20px; font-size: 12px; color: #888;
+            text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee;
+        }
+
+        .deals-table td {
+            padding: 10px 20px; font-size: 14px; border-bottom: 1px solid #f5f5f5;
+        }
+
+        .deals-table tr:last-child td { border-bottom: none; }
+        .deals-table tr:hover td { background: #fafbfc; }
+
+        .deals-table .sum-cell {
+            font-weight: 600; color: #333; text-align: right; white-space: nowrap;
+        }
+
+        .deal-link { color: #1e88e5; text-decoration: none; }
+        .deal-link:hover { text-decoration: underline; }
+
+        .stage-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 12px; font-weight: 500; background: #e3f2fd; color: #1565c0;
+        }
+        .stage-badge.won { background: #e8f5e9; color: #2e7d32; }
+        .stage-badge.lose { background: #ffebee; color: #c62828; }
+
+        .loading { text-align: center; padding: 60px; color: #888; font-size: 16px; }
+
+        .spinner {
+            display: inline-block; width: 32px; height: 32px;
+            border: 3px solid #e0e0e0; border-top-color: #1e88e5;
+            border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hidden { display: none; }
+        .empty { text-align: center; padding: 60px; color: #999; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Отчёт: Сумма исполнителя по сотрудникам</h1>
+    <p>Воронка «Исполнение заказа» — группировка по ответственному за месяц</p>
+</div>
+
+<div class="controls">
+    <label for="monthFrom">Период:</label>
+    <input type="month" id="monthFrom">
+    <span>—</span>
+    <input type="month" id="monthTo">
+    <button id="btnGenerate">Сформировать</button>
+    <button class="export-btn hidden" id="btnExport">Экспорт CSV</button>
+</div>
+
+<div id="summaryCards" class="summary-cards hidden">
+    <div class="card">
+        <div class="label">Сотрудников</div>
+        <div class="value" id="totalUsers">0</div>
+    </div>
+    <div class="card">
+        <div class="label">Сделок</div>
+        <div class="value" id="totalDeals">0</div>
+    </div>
+    <div class="card">
+        <div class="label">Общая сумма</div>
+        <div class="value green" id="totalSum">0 ₽</div>
+    </div>
+</div>
+
+<div id="content"></div>
+
+<script>
+const WEBHOOK = 'https://b24-zdzx6w.bitrix24.ru/rest/1/9wbak5042uzstqn3';
+const PIPELINE_ID = 1;
+const EXECUTOR_SUM_FIELD = 'UF_CRM_1775840246072';
+const PORTAL_URL = 'https://b24-zdzx6w.bitrix24.ru';
+
+const STAGE_NAMES = {
+    'C1:NEW': 'Новая',
+    'C1:PREPARATION': 'Уточнение',
+    'C1:PREPAYMENT_INVOICE': 'Передано',
+    'C1:EXECUTING': 'Сдаём',
+    'C1:WON': 'Успешна',
+    'C1:LOSE': 'Провалена',
+    'C1:UC_RB2AVU': 'На правках',
+};
+
+let reportData = null;
+
+// Init
+const now = new Date();
+const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+document.getElementById('monthFrom').value = currentMonth;
+document.getElementById('monthTo').value = currentMonth;
+document.getElementById('btnGenerate').addEventListener('click', generateReport);
+document.getElementById('btnExport').addEventListener('click', exportCSV);
+
+async function apiCall(method, params) {
+    const body = new URLSearchParams();
+    function flatten(obj, prefix) {
+        for (const [key, val] of Object.entries(obj)) {
+            const fullKey = prefix ? prefix + '[' + key + ']' : key;
+            if (Array.isArray(val)) {
+                val.forEach(function(v, i) { body.append(fullKey + '[' + i + ']', v); });
+            } else if (typeof val === 'object' && val !== null) {
+                flatten(val, fullKey);
+            } else {
+                body.append(fullKey, val);
+            }
+        }
+    }
+    if (params) flatten(params, '');
+    const resp = await fetch(WEBHOOK + '/' + method + '.json', { method: 'POST', body: body });
+    return resp.json();
+}
+
+async function getAllDeals(dateFrom, dateTo) {
+    var deals = [];
+    var start = 0;
+    while (true) {
+        var result = await apiCall('crm.deal.list', {
+            filter: { 'CATEGORY_ID': PIPELINE_ID, '>=CLOSEDATE': dateFrom, '<CLOSEDATE': dateTo },
+            select: ['ID', 'TITLE', 'ASSIGNED_BY_ID', 'STAGE_ID', 'OPPORTUNITY', 'CLOSEDATE', 'DATE_CREATE', EXECUTOR_SUM_FIELD],
+            start: start,
+        });
+        var batch = result.result || [];
+        deals = deals.concat(batch);
+        if (!result.next) break;
+        start = result.next;
+    }
+    return deals;
+}
+
+async function getUsers(ids) {
+    if (!ids.length) return {};
+    var params = {};
+    ids.forEach(function(id, i) { params['ID[' + i + ']'] = id; });
+    var result = await apiCall('user.get', params);
+    var users = {};
+    (result.result || []).forEach(function(u) {
+        users[u.ID] = ((u.NAME || '') + ' ' + (u.LAST_NAME || '')).trim() || ('User #' + u.ID);
+    });
+    return users;
+}
+
+function parseMoney(val) {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    return parseFloat(String(val).split('|')[0]) || 0;
+}
+
+function formatMoney(num) {
+    return num.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' \u20BD';
+}
+
+function getMonthRange(yearMonth) {
+    var parts = yearMonth.split('-');
+    var y = parseInt(parts[0]), m = parseInt(parts[1]);
+    var from = y + '-' + String(m).padStart(2, '0') + '-01';
+    var next = m === 12 ? (y + 1) + '-01-01' : y + '-' + String(m + 1).padStart(2, '0') + '-01';
+    return [from, next];
+}
+
+function escapeText(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.textContent;
+}
+
+function clearElement(el) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function createDealRow(deal, userName, portalUrl) {
+    var tr = document.createElement('tr');
+
+    var tdId = document.createElement('td');
+    var link = document.createElement('a');
+    link.className = 'deal-link';
+    link.href = portalUrl + '/crm/deal/details/' + deal.id + '/';
+    link.target = '_blank';
+    link.textContent = '#' + deal.id;
+    tdId.appendChild(link);
+    tr.appendChild(tdId);
+
+    var tdTitle = document.createElement('td');
+    tdTitle.textContent = deal.title;
+    tr.appendChild(tdTitle);
+
+    var tdStage = document.createElement('td');
+    var badge = document.createElement('span');
+    badge.className = 'stage-badge';
+    if (deal.stage.indexOf('WON') !== -1) badge.className += ' won';
+    if (deal.stage.indexOf('LOSE') !== -1) badge.className += ' lose';
+    badge.textContent = STAGE_NAMES[deal.stage] || deal.stage;
+    tdStage.appendChild(badge);
+    tr.appendChild(tdStage);
+
+    var tdDate = document.createElement('td');
+    tdDate.textContent = deal.date;
+    tr.appendChild(tdDate);
+
+    var tdSum = document.createElement('td');
+    tdSum.className = 'sum-cell';
+    tdSum.textContent = formatMoney(deal.sum);
+    tr.appendChild(tdSum);
+
+    return tr;
+}
+
+function createUserSection(summary) {
+    var section = document.createElement('div');
+    section.className = 'user-section';
+
+    var header = document.createElement('div');
+    header.className = 'user-header';
+
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'user-name';
+    nameSpan.textContent = summary.name;
+    header.appendChild(nameSpan);
+
+    var stats = document.createElement('div');
+    stats.className = 'user-stats';
+
+    var dealsCount = document.createElement('span');
+    dealsCount.textContent = '\u0421\u0434\u0435\u043b\u043e\u043a: ' + summary.deals.length;
+    stats.appendChild(dealsCount);
+
+    var sumSpan = document.createElement('span');
+    sumSpan.className = 'sum';
+    sumSpan.textContent = formatMoney(summary.total);
+    stats.appendChild(sumSpan);
+
+    header.appendChild(stats);
+    section.appendChild(header);
+
+    var tableWrap = document.createElement('div');
+    var table = document.createElement('table');
+    table.className = 'deals-table';
+
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    ['ID', '\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435', '\u0421\u0442\u0430\u0434\u0438\u044f', '\u0414\u0430\u0442\u0430', '\u0421\u0443\u043c\u043c\u0430 \u0438\u0441\u043f.'].forEach(function(text, i) {
+        var th = document.createElement('th');
+        th.textContent = text;
+        if (i === 4) th.style.textAlign = 'right';
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+    summary.deals.forEach(function(d) {
+        tbody.appendChild(createDealRow(d, summary.name, PORTAL_URL));
+    });
+    table.appendChild(tbody);
+
+    tableWrap.appendChild(table);
+    section.appendChild(tableWrap);
+
+    header.addEventListener('click', function() {
+        tableWrap.classList.toggle('hidden');
+    });
+
+    return section;
+}
+
+async function generateReport() {
+    var btn = document.getElementById('btnGenerate');
+    var content = document.getElementById('content');
+    var cards = document.getElementById('summaryCards');
+    var exportBtn = document.getElementById('btnExport');
+
+    btn.disabled = true;
+    btn.textContent = '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...';
+    cards.classList.add('hidden');
+    exportBtn.classList.add('hidden');
+
+    clearElement(content);
+    var loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading';
+    var spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    loadingDiv.appendChild(spinner);
+    loadingDiv.appendChild(document.createElement('br'));
+    loadingDiv.appendChild(document.createTextNode('\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u044e \u0441\u0434\u0435\u043b\u043a\u0438 \u0438\u0437 Bitrix24...'));
+    content.appendChild(loadingDiv);
+
+    try {
+        var monthFrom = document.getElementById('monthFrom').value;
+        var monthTo = document.getElementById('monthTo').value;
+        var rangeFrom = getMonthRange(monthFrom);
+        var rangeTo = getMonthRange(monthTo);
+        var dateFrom = rangeFrom[0];
+        var dateTo = rangeTo[1];
+
+        var deals = await getAllDeals(dateFrom, dateTo);
+
+        clearElement(content);
+
+        if (!deals.length) {
+            var emptyDiv = document.createElement('div');
+            emptyDiv.className = 'empty';
+            emptyDiv.textContent = '\u041d\u0435\u0442 \u0441\u0434\u0435\u043b\u043e\u043a \u0437\u0430 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u043f\u0435\u0440\u0438\u043e\u0434';
+            content.appendChild(emptyDiv);
+            btn.disabled = false;
+            btn.textContent = '\u0421\u0444\u043e\u0440\u043c\u0438\u0440\u043e\u0432\u0430\u0442\u044c';
+            return;
+        }
+
+        var byUser = {};
+        deals.forEach(function(deal) {
+            var uid = deal.ASSIGNED_BY_ID || '0';
+            if (!byUser[uid]) byUser[uid] = [];
+            byUser[uid].push(deal);
+        });
+
+        var userIds = Object.keys(byUser);
+        var users = await getUsers(userIds);
+
+        var summaries = [];
+        var grandTotal = 0;
+
+        userIds.forEach(function(uid) {
+            var userDeals = byUser[uid];
+            var userTotal = 0;
+            var dealRows = userDeals.map(function(d) {
+                var sum = parseMoney(d[EXECUTOR_SUM_FIELD]);
+                userTotal += sum;
+                return {
+                    id: d.ID,
+                    title: d.TITLE || '\u2014',
+                    sum: sum,
+                    stage: d.STAGE_ID || '',
+                    date: (d.CLOSEDATE || d.DATE_CREATE || '').substring(0, 10),
+                };
+            });
+            summaries.push({ uid: uid, name: users[uid] || ('User #' + uid), total: userTotal, deals: dealRows });
+            grandTotal += userTotal;
+        });
+
+        summaries.sort(function(a, b) { return b.total - a.total; });
+
+        reportData = { summaries: summaries, grandTotal: grandTotal, dateFrom: dateFrom, dateTo: dateTo };
+
+        document.getElementById('totalUsers').textContent = summaries.length;
+        document.getElementById('totalDeals').textContent = deals.length;
+        document.getElementById('totalSum').textContent = formatMoney(grandTotal);
+        cards.classList.remove('hidden');
+        exportBtn.classList.remove('hidden');
+
+        summaries.forEach(function(s) {
+            content.appendChild(createUserSection(s));
+        });
+
+    } catch (err) {
+        clearElement(content);
+        var errDiv = document.createElement('div');
+        errDiv.className = 'empty';
+        errDiv.textContent = '\u041e\u0448\u0438\u0431\u043a\u0430: ' + err.message;
+        content.appendChild(errDiv);
+    }
+
+    btn.disabled = false;
+    btn.textContent = '\u0421\u0444\u043e\u0440\u043c\u0438\u0440\u043e\u0432\u0430\u0442\u044c';
+}
+
+function exportCSV() {
+    if (!reportData) return;
+
+    var BOM = '\uFEFF';
+    var csv = BOM + '\u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a;ID \u0441\u0434\u0435\u043b\u043a\u0438;\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435;\u0421\u0442\u0430\u0434\u0438\u044f;\u0414\u0430\u0442\u0430;\u0421\u0443\u043c\u043c\u0430 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f\n';
+
+    reportData.summaries.forEach(function(s) {
+        s.deals.forEach(function(d) {
+            csv += '"' + s.name + '";' + d.id + ';"' + d.title + '";"' + (STAGE_NAMES[d.stage] || d.stage) + '";' + d.date + ';' + d.sum.toFixed(2) + '\n';
+        });
+        csv += '"' + s.name + ' \u2014 \u0418\u0422\u041e\u0413\u041e";;;;;"' + s.total.toFixed(2) + '"\n';
+    });
+    csv += '\n"\u041e\u0411\u0429\u0418\u0419 \u0418\u0422\u041e\u0413\u041e";;;;;"' + reportData.grandTotal.toFixed(2) + '"\n';
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'report_executor_' + document.getElementById('monthFrom').value + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>
